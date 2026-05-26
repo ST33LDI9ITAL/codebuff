@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# update-codebuff — rebase fork on upstream main, rebuild binary
+# update-codebuff — pull upstream main, rebuild standalone binary, push to fork
 set -euo pipefail
 
 cd "$(dirname "$0")"

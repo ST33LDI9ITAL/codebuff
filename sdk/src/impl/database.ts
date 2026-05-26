@@ -1,3 +1,4 @@
+import crypto from 'crypto'
 import { validateSingleAgent } from '@codebuff/common/templates/agent-validation'
 import { DynamicAgentTemplateSchema } from '@codebuff/common/types/dynamic-agent-template'
 import { getErrorObject } from '@codebuff/common/util/error'
@@ -126,47 +127,8 @@ export async function fetchAgentFromDatabase(
 export async function startAgentRun(
   params: ParamsOf<StartAgentRunFn>,
 ): ReturnType<StartAgentRunFn> {
-  const { apiKey, agentId, ancestorRunIds, logger } = params
-
-  const url = new URL(`/api/v1/agent-runs`, WEBSITE_URL)
-
-  try {
-    const response = await fetchWithRetry(
-      url,
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          action: 'START',
-          agentId,
-          ancestorRunIds,
-        }),
-      },
-      logger,
-    )
-
-    if (!response.ok) {
-      logger.error({ response }, 'startAgentRun request failed')
-      return null
-    }
-
-    const responseBody = await response.json()
-    if (!responseBody?.runId) {
-      logger.error(
-        { responseBody },
-        'no runId found from startAgentRun request',
-      )
-    }
-    return responseBody?.runId ?? null
-  } catch (error) {
-    logger.error(
-      { error: getErrorObject(error), agentId },
-      'startAgentRun error',
-    )
-    return null
-  }
+  // Standalone: return a fake runId without hitting the backend
+  return 'standalone-run-' + crypto.randomUUID()
 }
 
 export async function finishAgentRun(

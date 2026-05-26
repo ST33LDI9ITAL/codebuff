@@ -40,7 +40,7 @@ export const useAgentValidation = (): UseAgentValidationResult => {
       const agentDefinitions = loadAgentDefinitions()
 
       const validationResult = await validateAgents(agentDefinitions, {
-        remote: true,
+        remote: false,
       })
 
       if (validationResult.success) {
