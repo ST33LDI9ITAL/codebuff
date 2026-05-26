@@ -5,7 +5,6 @@ import { useShallow } from 'zustand/react/shallow'
 import { Chat } from './chat'
 import { ChatHistoryScreen } from './components/chat-history-screen'
 import { FreebuffSupersededScreen } from './components/freebuff-superseded-screen'
-import { LoginModal } from './components/login-modal'
 import { ProjectPickerScreen } from './components/project-picker-screen'
 import { TerminalLink } from './components/terminal-link'
 import { WaitingRoomScreen } from './components/waiting-room-screen'
@@ -270,21 +269,6 @@ export const App = ({
       <ProjectPickerScreen
         onSelectProject={onProjectChange}
         initialPath={projectRoot}
-      />
-    )
-  }
-
-  // Render login modal when not authenticated AND auth service is reachable
-  // Don't show login modal during network outages OR while retrying
-  if (
-    requireAuth !== null &&
-    isAuthenticated === false &&
-    authStatus === 'ok'
-  ) {
-    return (
-      <LoginModal
-        onLoginSuccess={handleLoginSuccess}
-        hasInvalidCredentials={hasInvalidCredentials}
       />
     )
   }

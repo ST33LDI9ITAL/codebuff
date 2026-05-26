@@ -101,7 +101,14 @@ export function useUsageQuery(deps: UseUsageQueryDeps = {}) {
 
   return useActivityQuery({
     queryKey: usageQueryKeys.current(),
-    queryFn: () => fetchUsageData({ authToken: authToken!, logger }),
+    queryFn: () =>
+      Promise.resolve({
+        type: 'usage-response' as const,
+        usage: 0,
+        remainingBalance: 999999,
+        balanceBreakdown: {},
+        next_quota_reset: null,
+      }),
     enabled: enabled && !!authToken,
     staleTime: 0, // Always consider data stale for immediate refetching
     gcTime: 5 * 60 * 1000, // 5 minutes

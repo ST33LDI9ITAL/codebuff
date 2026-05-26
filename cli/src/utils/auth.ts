@@ -1,16 +1,13 @@
+import crypto from 'crypto'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
 
-import { env } from '@codebuff/common/env'
-import { getCiEnv } from '@codebuff/common/env-ci'
 import { z } from 'zod'
 
 
-import { getApiClient, setApiClientAuthToken } from './codebuff-api'
 import { logger } from './logger'
 
-import type { CiEnv } from '@codebuff/common/types/contracts/env'
 
 // User schema
 const userSchema = z.object({
@@ -31,17 +28,32 @@ const credentialsSchema = z
   })
   .catchall(z.unknown())
 
-// Get the config directory path
-export const getConfigDir = (): string => {
-  return path.join(
-    os.homedir(),
-    '.config',
-    'manicode' +
-      // on a development stack?
-      (env.NEXT_PUBLIC_CB_ENVIRONMENT !== 'prod'
-        ? `-${env.NEXT_PUBLIC_CB_ENVIRONMENT}`
-        : ''),
-  )
+// Standalone config dir — no env var dependency
+const LOCAL_CONFIG_DIR = path.join(os.homedir(), '.config', 'codebuff-local')
+
+export const getConfigDir = (): string => LOCAL_CONFIG_DIR
+
+/**
+ * Get or create a local API key. Reads DEEPSEEK_API_KEY from env,
+ * otherwise generates a random UUID and persists it.
+ */
+export function getOrCreateLocalApiKey(): string {
+  const fromEnv = process.env.DEEPSEEK_API_KEY
+  if (fromEnv) return fromEnv
+
+  const keyPath = path.join(LOCAL_CONFIG_DIR, 'api-key')
+  try {
+    if (fs.existsSync(keyPath)) {
+      return fs.readFileSync(keyPath, 'utf8').trim()
+    }
+  } catch {
+    // fall through to generate
+  }
+
+  const key = crypto.randomUUID()
+  fs.mkdirSync(LOCAL_CONFIG_DIR, { recursive: true })
+  fs.writeFileSync(keyPath, key, 'utf8')
+  return key
 }
 
 // Get the credentials file path
@@ -112,19 +124,11 @@ export interface AuthTokenDetails {
 /**
  * Resolve the auth token and track where it came from.
  */
-export const getAuthTokenDetails = (
-  ciEnv: CiEnv = getCiEnv(),
-): AuthTokenDetails => {
-  const userCredentials = getUserCredentials()
-  if (userCredentials?.authToken) {
-    return { token: userCredentials.authToken, source: 'credentials' }
+export const getAuthTokenDetails = (): AuthTokenDetails => {
+  const localKey = getOrCreateLocalApiKey()
+  if (localKey) {
+    return { token: localKey, source: 'environment' }
   }
-
-  const envToken = ciEnv.CODEBUFF_API_KEY
-  if (envToken) {
-    return { token: envToken, source: 'environment' }
-  }
-
   return { source: null }
 }
 
@@ -212,31 +216,6 @@ export const clearUserCredentials = (): void => {
 }
 
 export async function logoutUser(): Promise<boolean> {
-  try {
-    const user = getUserCredentials()
-    if (user?.authToken) {
-      setApiClientAuthToken(user.authToken)
-      const apiClient = getApiClient()
-      try {
-        const response = await apiClient.logout({
-          userId: user.id,
-          fingerprintId: user.fingerprintId,
-          fingerprintHash: user.fingerprintHash,
-        })
-        if (!response.ok) {
-          logger.error(
-            { status: response.status, error: response.error },
-            'Logout request failed',
-          )
-        }
-      } catch (err) {
-        logger.error(err, 'Logout request error')
-      }
-    }
-  } catch (error) {
-    logger.error(error, 'Unexpected error preparing logout')
-  }
-
   try {
     clearUserCredentials()
   } catch (error) {

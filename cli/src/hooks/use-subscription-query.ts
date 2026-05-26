@@ -57,7 +57,11 @@ export function useSubscriptionQuery(deps: UseSubscriptionQueryDeps = {}) {
 
   return useActivityQuery({
     queryKey: subscriptionQueryKeys.current(),
-    queryFn: () => fetchSubscriptionData(logger),
+    queryFn: () =>
+      Promise.resolve({
+        active: true,
+        plan: 'pro',
+      }),
     enabled: enabled && !!authToken && !IS_FREEBUFF,
     staleTime: 30 * 1000,
     gcTime: 5 * 60 * 1000,

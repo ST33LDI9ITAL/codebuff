@@ -49,93 +49,9 @@ export const useConnectionStatus = (
   const previousConnectedRef = useRef<boolean | null>(null)
 
   useEffect(() => {
-    let isMounted = true
-    let timeoutId: NodeJS.Timeout | null = null
-    let consecutiveSuccesses = 0
-    let currentInterval: number = HEALTH_CHECK_CONFIG.INITIAL_INTERVAL
-
-    const scheduleNextCheck = (interval: number) => {
-      if (!isMounted) return
-      timeoutId = setTimeout(() => checkConnection(), interval)
-    }
-
-    const checkConnection = async () => {
-      const client = await getCodebuffClient()
-      if (!client) {
-        if (isMounted) {
-          setIsConnected(false)
-          previousConnectedRef.current = false
-          consecutiveSuccesses = 0
-          currentInterval = HEALTH_CHECK_CONFIG.INITIAL_INTERVAL
-          logger.debug(
-            { interval: currentInterval },
-            'Health check: No client, reset to initial interval',
-          )
-          scheduleNextCheck(currentInterval)
-        }
-        return
-      }
-
-      try {
-        const connected = await client.checkConnection()
-        if (!isMounted) return
-
-        const prevConnected = previousConnectedRef.current
-        setIsConnected(connected)
-        previousConnectedRef.current = connected
-
-        if (connected) {
-          // Determine if this is the initial connection (null) or a reconnection (false)
-          const isInitialConnection = prevConnected === null
-          const shouldFireReconnectCallback =
-            typeof onReconnect === 'function' && prevConnected !== true
-
-          if (shouldFireReconnectCallback) {
-            logger.info(
-              { isInitialConnection },
-              'Reconnection detected, firing onReconnect callback',
-            )
-            onReconnect(isInitialConnection)
-          }
-          consecutiveSuccesses++
-          const newInterval = getNextInterval(consecutiveSuccesses)
-
-          if (newInterval !== currentInterval) {
-            currentInterval = newInterval
-          }
-
-          scheduleNextCheck(currentInterval)
-        } else {
-          // Reset to fast polling on connection failure
-          previousConnectedRef.current = false
-          consecutiveSuccesses = 0
-          currentInterval = HEALTH_CHECK_CONFIG.INITIAL_INTERVAL
-          logger.debug(
-            { interval: currentInterval },
-            'Health check failed, reset to initial interval',
-          )
-          scheduleNextCheck(currentInterval)
-        }
-      } catch (error) {
-        logger.debug({ error }, 'Connection check failed')
-        if (isMounted) {
-          setIsConnected(false)
-          previousConnectedRef.current = false
-          consecutiveSuccesses = 0
-          currentInterval = HEALTH_CHECK_CONFIG.INITIAL_INTERVAL
-          scheduleNextCheck(currentInterval)
-        }
-      }
-    }
-
-    // Start first check immediately
-    checkConnection()
-
-    return () => {
-      isMounted = false
-      if (timeoutId) {
-        clearTimeout(timeoutId)
-      }
+    setIsConnected(true)
+    if (typeof onReconnect === 'function') {
+      onReconnect(true)
     }
   }, [])
 

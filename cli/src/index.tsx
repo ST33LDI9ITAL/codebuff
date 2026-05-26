@@ -27,13 +27,11 @@ import React from 'react'
 
 import { App } from './app'
 import { handlePublish } from './commands/publish'
-import { runPlainLogin } from './login/plain-login'
 import { initializeApp } from './init/init-app'
 import { getProjectRoot, setProjectRoot } from './project-files'
 import { trackEvent } from './utils/analytics'
-import { getAuthToken, getAuthTokenDetails } from './utils/auth'
+import { getAuthTokenDetails } from './utils/auth'
 import { resetCodebuffClient } from './utils/codebuff-client'
-import { setApiClientAuthToken } from './utils/codebuff-api'
 import { IS_FREEBUFF } from './utils/constants'
 import { getCliEnv } from './utils/env'
 import { initializeAgentRegistry } from './utils/local-agent-registry'
@@ -286,20 +284,10 @@ async function main(): Promise<void> {
     initialMode,
   } = parseArgs()
 
-  const isLoginCommand = process.argv[2] === 'login'
   const isPublishCommand = process.argv[2] === 'publish'
   const hasAgentOverride = Boolean(agent?.trim())
 
   await initializeApp({ cwd })
-
-  // Set the auth token for the API client
-  setApiClientAuthToken(getAuthToken())
-
-  // Handle login command before rendering the app
-  if (isLoginCommand) {
-    await runPlainLogin()
-    return
-  }
 
   // Show project picker only when user starts at the home directory or an ancestor
   const projectRoot = getProjectRoot()

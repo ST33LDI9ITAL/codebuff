@@ -137,7 +137,11 @@ export function useAuthQuery(deps: UseAuthQueryDeps = {}) {
 
   return useQuery({
     queryKey: authQueryKeys.validation(apiKey),
-    queryFn: () => validateApiKey({ apiKey, getUserInfoFromApiKey, logger }),
+    queryFn: () =>
+      Promise.resolve({
+        id: 'local',
+        email: 'local@dev',
+      }),
     enabled: !!apiKey,
     staleTime: 5 * 60 * 1000, // 5 minutes
     gcTime: 10 * 60 * 1000, // 10 minutes

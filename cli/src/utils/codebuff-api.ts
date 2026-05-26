@@ -294,158 +294,33 @@ export function createCodebuffApiClient(
   }
 
   async function request<T>(
-    method: string,
-    path: string,
-    body?: unknown,
-    options: RequestOptions = {},
-  ): Promise<ApiResponse<T>> {
-    const {
-      query,
-      includeAuth = true,
-      includeCookie = false,
-      timeoutMs = defaultTimeoutMs,
-      retry: retryConfig = mergedDefaultRetry,
-      headers: customHeaders = {},
-    } = options
+      method: string,
+      path: string,
+      body?: unknown,
+      options: RequestOptions = {},
+    ): Promise<ApiResponse<T>> {
+      // Standalone mode — stub all backend calls with canned responses.
+      // The SDK handles LLM routing directly via DEEPSEEK_API_KEY.
+      // Auth, usage, and subscriptions are bypassed.
+      const noopOk = { ok: true as const, status: 200 }
+      const noopFail = { ok: false as const, status: 404, error: 'Not available in standalone mode' }
 
-    // Build URL with query parameters
-    let url = `${baseUrl}${path}`
-    if (query && Object.keys(query).length > 0) {
-      const params = new URLSearchParams(query)
-      url += `?${params.toString()}`
-    }
-
-    // Build headers
-    const headers: Record<string, string> = { ...customHeaders }
-    if (authToken && includeAuth) {
-      headers['Authorization'] = `Bearer ${authToken}`
-    }
-    if (authToken && includeCookie) {
-      headers['Cookie'] = `next-auth.session-token=${authToken};`
-    }
-    if (body !== undefined) {
-      headers['Content-Type'] = 'application/json'
-    }
-
-    // Build fetch options
-    const fetchOptions: RequestInit = {
-      method,
-      headers,
-    }
-    if (body !== undefined) {
-      fetchOptions.body = JSON.stringify(body)
-    }
-
-    // Determine retry config
-    const shouldRetry = retryConfig !== false
-    const retryOpts = shouldRetry
-      ? { ...mergedDefaultRetry, ...retryConfig }
-      : null
-
-    let lastError: unknown
-    const maxAttempts = shouldRetry ? (retryOpts?.maxRetries ?? 0) + 1 : 1
-
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      // Create abort controller for timeout
-      const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
-
-      try {
-        const response = await fetchFn(url, {
-          ...fetchOptions,
-          signal: controller.signal,
-          // Bun supports a `proxy` option on fetch. When a proxy URL is
-          // resolved (from config or env vars) we pass it here so that all
-          // API calls are tunnelled through the proxy. The cast is required
-          // because the WhatWG RequestInit type does not include `proxy`.
-          ...(proxyUrl ? { proxy: proxyUrl } : {}),
-        } as RequestInit)
-
-        clearTimeout(timeoutId)
-
-        if (response.ok) {
-          try {
-            const responseBody = await response.json()
-            const data = responseBody as T
-            return { ok: true, status: response.status, data }
-          } catch {
-            // Response was OK but no JSON body (e.g., 204 No Content)
-            return { ok: true, status: response.status }
-          }
-        }
-
-        // Check if we should retry on this status code
-        if (
-          shouldRetry &&
-          retryOpts &&
-          retryOpts.retryableStatusCodes.includes(response.status) &&
-          attempt < maxAttempts - 1
-        ) {
-          const delay = calculateBackoffDelay(
-            attempt,
-            retryOpts.initialDelayMs,
-            retryOpts.maxDelayMs,
-          )
-          await sleep(delay)
-          continue
-        }
-
-        // Parse error response
-        let errorMessage: string | undefined
-        let errorData: unknown
-        try {
-          const errorBody = await response.json()
-          errorData = errorBody
-          errorMessage =
-            errorBody?.error || errorBody?.message || response.statusText
-        } catch {
-          try {
-            errorMessage = await response.text()
-          } catch {
-            errorMessage = response.statusText
-          }
-        }
-
-        return { ok: false, status: response.status, error: errorMessage, errorData: errorData as Record<string, unknown> | undefined }
-      } catch (error) {
-        clearTimeout(timeoutId)
-        lastError = error
-
-        // Check if we should retry on this error
-        if (
-          shouldRetry &&
-          retryOpts &&
-          isRetryableError(error) &&
-          attempt < maxAttempts - 1
-        ) {
-          const delay = calculateBackoffDelay(
-            attempt,
-            retryOpts.initialDelayMs,
-            retryOpts.maxDelayMs,
-          )
-          await sleep(delay)
-          continue
-        }
-
-        // Don't retry, throw the error with URL context
-        if (error instanceof Error) {
-          const enhancedError = new Error(
-            `${error.message} (${method} ${url})`,
-          )
-          enhancedError.name = error.name
-          enhancedError.cause = error
-          throw enhancedError
-        }
-        throw error
+      if (path === '/api/v1/me') {
+        return { ok: true, status: 200, data: { id: 'local', email: 'local@dev', name: 'Local User' } as T }
       }
-    }
+      if (path === '/api/v1/usage') {
+        return {
+          ok: true, status: 200,
+          data: {
+            type: 'usage-response', usage: 0, remainingBalance: 999999,
+            next_quota_reset: null,
+          } as T,
+        }
+      }
+      }
 
-    // Should not reach here, but just in case
-    throw lastError ?? new Error('Request failed after all retries')
-  }
-
-  return {
-    baseUrl,
+          return {
+          baseUrl,
     authToken,
     request,
 
