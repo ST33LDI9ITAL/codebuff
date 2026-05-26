@@ -40,7 +40,7 @@ import type { LanguageModel } from 'ai'
  * on the wire, so there's no need to change any agent definitions.
  */
 const DEEPSEEK_BASE_URL = 'https://api.deepseek.com'
-const DEEPSEEK_FLASH_MODEL = 'deepseek/deepseek-v4-flash'
+const DEEPSEEK_FLASH_MODEL = 'deepseek-v4-flash'
 
 // ============================================================================
 // ChatGPT OAuth Rate Limit Cache
