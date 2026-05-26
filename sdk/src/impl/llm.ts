@@ -337,28 +337,7 @@ export async function* promptAiSdkStream(
     ...streamParams,
     prompt: undefined,
     model: aiSDKModel,
-    messages: convertCbToModelMessages(params).map((msg: any) => {
-      // DeepSeek requires reasoning_content as a top-level field on assistant
-      // messages, not as custom content parts. Extract any reasoning parts and
-      // move them to reasoning_content.
-      if (msg.role === 'assistant' && Array.isArray(msg.content)) {
-        const reasoningParts = msg.content.filter(
-          (p: any) => p.type === 'reasoning',
-        )
-        if (reasoningParts.length > 0) {
-          msg.reasoning_content = reasoningParts
-            .map((p: any) => p.text)
-            .join('')
-          msg.content = msg.content.filter(
-            (p: any) => p.type !== 'reasoning',
-          )
-          if (msg.content.length === 1 && msg.content[0].type === 'text') {
-            msg.content = msg.content[0].text
-          }
-        }
-      }
-      return msg
-    }),
+    messages: convertCbToModelMessages(params),
     ...(isChatGptOAuth && { maxRetries: 0 }),
     // For ChatGPT OAuth direct, don't send codebuff metadata/provider options to OpenAI
     ...(isChatGptOAuth
