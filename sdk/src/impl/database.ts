@@ -98,205 +98,29 @@ async function fetchWithRetry(
 export async function getUserInfoFromApiKey<T extends UserColumn>(
   params: GetUserInfoFromApiKeyInput<T>,
 ): GetUserInfoFromApiKeyOutput<T> {
-  const { apiKey, fields, logger } = params
+  const { apiKey, fields } = params
 
-  const cached = userInfoCache[apiKey]
-  if (cached === null) {
-    throw createAuthError()
+  // Standalone: return canned local user info for any apiKey
+  const localUser: CachedUserInfo = {
+    id: 'local',
+    email: 'local@dev',
+    discord_id: null,
+    stripe_customer_id: null,
+    banned: false,
+    created_at: new Date(),
   }
-  if (
-    cached &&
-    fields.every((field) =>
-      Object.prototype.hasOwnProperty.call(cached, field),
-    )
-  ) {
-    return Object.fromEntries(fields.map((field) => [field, cached[field]])) as {
-      [K in T]: CachedUserInfo[K]
-    } as Awaited<GetUserInfoFromApiKeyOutput<T>>
-  }
+  userInfoCache[apiKey] = localUser
 
-  const fieldsToFetch = cached
-    ? fields.filter(
-        (field) => !Object.prototype.hasOwnProperty.call(cached, field),
-      )
-    : fields
-
-  const urlParams = new URLSearchParams({
-    fields: fieldsToFetch.join(','),
-  })
-  const url = new URL(`/api/v1/me?${urlParams}`, WEBSITE_URL)
-
-  let response: Response
-  try {
-    response = await fetchWithRetry(
-      url,
-      {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-        },
-      },
-      logger,
-    )
-  } catch (error) {
-    logger.error(
-      { error: getErrorObject(error), apiKey, fields },
-      'getUserInfoFromApiKey network error',
-    )
-    // Network-level failure: DNS, connection refused, timeout, etc.
-    throw createNetworkError('Network request failed')
-  }
-
-  if (response.status === 401 || response.status === 403 || response.status === 404) {
-    logger.error(
-      { apiKey, fields, status: response.status },
-      'getUserInfoFromApiKey authentication failed',
-    )
-    // Don't cache auth failures - allow retry with potentially updated credentials
-    delete userInfoCache[apiKey]
-    // If the server returns 404 for invalid credentials, surface as 401 to callers
-    const normalizedStatus = response.status === 404 ? 401 : response.status
-    throw createHttpError('Authentication failed', normalizedStatus)
-  }
-
-  if (response.status >= 500 && response.status <= 599) {
-    logger.error(
-      { apiKey, fields, status: response.status },
-      'getUserInfoFromApiKey server error',
-    )
-    throw createServerError('Server error', response.status)
-  }
-
-  if (!response.ok) {
-    logger.error(
-      { apiKey, fields, status: response.status },
-      'getUserInfoFromApiKey request failed',
-    )
-    throw createHttpError('Request failed', response.status)
-  }
-
-  const cachedBeforeMerge = userInfoCache[apiKey]
-  try {
-    const responseBody = await response.json()
-    const fetchedFields = responseBody as CachedUserInfo
-    userInfoCache[apiKey] = {
-      ...(cachedBeforeMerge ?? {}),
-      ...fetchedFields,
-    }
-  } catch (error) {
-    logger.error(
-      { error: getErrorObject(error), apiKey, fields },
-      'getUserInfoFromApiKey JSON parse error',
-    )
-    throw createHttpError('Failed to parse response', response.status)
-  }
-
-  const userInfo = userInfoCache[apiKey]
-  if (userInfo === null) {
-    throw createAuthError()
-  }
-  if (
-    !userInfo ||
-    !fields.every((field) =>
-      Object.prototype.hasOwnProperty.call(userInfo, field),
-    )
-  ) {
-    logger.error(
-      { apiKey, fields },
-      'getUserInfoFromApiKey: response missing required fields',
-    )
-    throw createHttpError('Request failed', response.status)
-  }
   return Object.fromEntries(
-    fields.map((field) => [field, userInfo[field]]),
+    fields.map((field) => [field, localUser[field]]),
   ) as Awaited<GetUserInfoFromApiKeyOutput<T>>
 }
 
 export async function fetchAgentFromDatabase(
   params: ParamsOf<FetchAgentFromDatabaseFn>,
 ): ReturnType<FetchAgentFromDatabaseFn> {
-  const { apiKey, parsedAgentId, logger } = params
-  const { publisherId, agentId, version } = parsedAgentId
-
-  const url = new URL(
-    `/api/v1/agents/${publisherId}/${agentId}/${version ? version : 'latest'}`,
-    WEBSITE_URL,
-  )
-
-  try {
-    const response = await fetchWithRetry(
-      url,
-      {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-        },
-      },
-      logger,
-    )
-
-    if (!response.ok) {
-      logger.error({ response }, 'fetchAgentFromDatabase request failed')
-      return null
-    }
-
-    const responseJson = await response.json()
-    const parseResult = agentsResponseSchema.safeParse(responseJson)
-    if (!parseResult.success) {
-      logger.error(
-        { responseJson, parseResult },
-        `fetchAgentFromDatabase parse error`,
-      )
-      return null
-    }
-
-    const agentConfig = parseResult.data
-    const rawAgentData = agentConfig.data as DynamicAgentTemplate
-
-    // Validate the raw agent data with the original agentId (not full identifier)
-    const validationResult = validateSingleAgent({
-      template: { ...rawAgentData, id: agentId, version: agentConfig.version },
-      filePath: `${publisherId}/${agentId}@${agentConfig.version}`,
-    })
-
-    if (!validationResult.success) {
-      logger.error(
-        {
-          publisherId,
-          agentId,
-          version: agentConfig.version,
-          error: validationResult.error,
-        },
-        'fetchAgentFromDatabase: Agent validation failed',
-      )
-      return null
-    }
-
-    // Set the correct full agent ID for the final template
-    const agentTemplate = {
-      ...validationResult.agentTemplate!,
-      id: `${publisherId}/${agentId}@${agentConfig.version}`,
-    }
-
-    logger.debug(
-      {
-        publisherId,
-        agentId,
-        version: agentConfig.version,
-        fullAgentId: agentTemplate.id,
-        parsedAgentId,
-      },
-      'fetchAgentFromDatabase: Successfully loaded and validated agent from database',
-    )
-
-    return agentTemplate
-  } catch (error) {
-    logger.error(
-      { error: getErrorObject(error), parsedAgentId },
-      'fetchAgentFromDatabase error',
-    )
-    return null
-  }
+  // Standalone: no remote agents available — rely on local .agents/ dirs
+  return null
 }
 
 export async function startAgentRun(
