@@ -2,6 +2,8 @@
  * Model provider abstraction for routing requests to the appropriate LLM provider.
  *
  * This module handles:
+ * - DeepSeek Direct: When DEEPSEEK_API_KEY is set, ALL requests route
+ *   to api.deepseek.com with model forced to deepseek/deepseek-v4-flash
  * - ChatGPT OAuth: Direct requests to OpenAI API using user's OAuth token
  * - Default: Requests through Codebuff backend (which routes to OpenRouter)
  */
@@ -31,6 +33,14 @@ import {
 } from './chatgpt-backend-fetch'
 
 import type { LanguageModel } from 'ai'
+
+/**
+ * DeepSeek API base URL and the model ID we send for every request.
+ * When DEEPSEEK_API_KEY is set, all agent models are replaced with this
+ * on the wire, so there's no need to change any agent definitions.
+ */
+const DEEPSEEK_BASE_URL = 'https://api.deepseek.com'
+const DEEPSEEK_FLASH_MODEL = 'deepseek/deepseek-v4-flash'
 
 // ============================================================================
 // ChatGPT OAuth Rate Limit Cache
@@ -117,6 +127,18 @@ export async function getModelForRequest(
 ): Promise<ModelResult> {
   const { apiKey, model, skipChatGptOAuth, costMode } = params
 
+  // If DEEPSEEK_API_KEY is set, route everything through DeepSeek.
+  // The model string sent to the API is always deepseek-v4-flash,
+  // so no agent definition changes are needed — this single env var
+  // overrides ALL model selection.
+  const deepseekApiKey = process.env.DEEPSEEK_API_KEY
+  if (deepseekApiKey) {
+    return {
+      model: createDeepSeekDirectModel(deepseekApiKey),
+      isChatGptOAuth: false,
+    }
+  }
+
   // Check if we should use ChatGPT OAuth direct
   // Only attempt for allowlisted models; non-allowlisted models silently fall through to backend.
   if (
@@ -188,6 +210,30 @@ function createOpenAIOAuthModel(
     fetch: createChatGptBackendFetch(),
     supportsStructuredOutputs: true,
     includeUsage: undefined,
+  })
+}
+
+/**
+ * Create a model that routes directly to DeepSeek's API.
+ * When DEEPSEEK_API_KEY is set, ALL requests go through this path.
+ * The model sent to DeepSeek is always deepseek-v4-flash (DEEPSEEK_FLASH_MODEL),
+ * regardless of what model the agent requested — this single env var
+ * overrides all agent model selection without touching agent definitions.
+ */
+function createDeepSeekDirectModel(
+  apiKey: string,
+): LanguageModel {
+  return new OpenAICompatibleChatLanguageModel(DEEPSEEK_FLASH_MODEL, {
+    provider: 'deepseek',
+    url: () => `${DEEPSEEK_BASE_URL}/chat/completions`,
+    headers: () => ({
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+      Accept: 'text/event-stream',
+    }),
+    fetch: undefined,
+    includeUsage: undefined,
+    supportsStructuredOutputs: true,
   })
 }
 
